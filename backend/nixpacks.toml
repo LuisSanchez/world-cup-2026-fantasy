@@ -1,0 +1,3 @@
+# Alternate Railway builder (if not using Dockerfile)
+[start]
+cmd = "uvicorn app.main:app --host 0.0.0.0 --port $PORT"

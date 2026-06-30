@@ -1,0 +1,5 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "echo 'DEPRECATED: deploy backend on Railway, not Vercel. See docs/DEPLOY.md' && exit 1"
+}

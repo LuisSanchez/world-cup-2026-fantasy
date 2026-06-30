@@ -1,0 +1,52 @@
+services:
+  backend:
+    # Repo-root context so backend/Dockerfile matches Railway (COPY backend/app …)
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      # Override via root .env: DATABASE_URL=postgresql://user:pass@host/db?sslmode=require
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/wc_fantasy.db}
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-change-in-production}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - BACKEND_URL=${BACKEND_URL:-http://localhost:8000}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - SUPER_ADMIN_EMAIL=${SUPER_ADMIN_EMAIL:-admin@localhost.dev}
+      - ADMIN_EMAILS=${ADMIN_EMAILS:-}
+      - PREDICTION_LOCK_MINUTES=10
+      - FOOTBALL_API_KEY=${FOOTBALL_API_KEY:-}
+      - FOOTBALL_LEAGUE_ID=${FOOTBALL_LEAGUE_ID:-1}
+      - FOOTBALL_SEASON=${FOOTBALL_SEASON:-2026}
+      - RESULTS_FETCH_WINDOW_MINUTES=${RESULTS_FETCH_WINDOW_MINUTES:-5}
+      - RESULTS_POLL_SECONDS=${RESULTS_POLL_SECONDS:-60}
+    volumes:
+      # Persistent SQLite / uploads dir — survives container restarts; do not delete in prod
+      # No quiniela.csv mount: app starts without CSV; admin uploads create quiniela_<uuid>.csv on demand
+      - wc_sqlite_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  wc_sqlite_data:
+    name: wc_fantasy_sqlite
+    driver: local

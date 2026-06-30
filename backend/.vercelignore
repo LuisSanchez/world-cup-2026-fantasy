@@ -1,0 +1,15 @@
+# Only applies when Vercel Root Directory = backend
+tests/
+coverage_html/
+.venv/
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+*.pyc
+.coveragerc
+pytest.ini
+requirements-dev.txt
+Procfile
+railway.toml
+Dockerfile
+pip.conf

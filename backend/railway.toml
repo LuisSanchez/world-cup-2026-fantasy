@@ -1,0 +1,10 @@
+# Prefer repo-root railway.toml (dockerfilePath = backend/Dockerfile).
+# If this service has Root Directory = backend, use Dockerfile.railway-subdir instead.
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile.railway-subdir"
+
+[deploy]
+healthcheckPath = "/api/health"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"

@@ -1,0 +1,9 @@
+# Frontend-only Vercel deploy: set Root Directory = frontend in Vercel UI.
+# This file applies only if Root Directory is repo root.
+backend/
+data/
+docs/
+*.db
+.venv/
+docker-compose.yml
+Makefile
