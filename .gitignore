@@ -19,3 +19,6 @@ backend/.env
 dist/
 .vercel
 *.csv
+# Public quiniela templates (documented in README)
+!docs/quiniela_template.csv
+!docs/quiniela_template_blank.csv

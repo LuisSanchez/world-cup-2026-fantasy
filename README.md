@@ -25,6 +25,18 @@ Web app for tracking World Cup 2026 predictions among a private group. Users sig
 - **Quiniela import** (admin only): drag-and-drop CSV in Admin; each upload is stored as a **new** `{stem}_{uuid}.csv` and predictions are upserted into the DB (not reused; no host mount / image copy required)
 - **Responsive**: bottom nav, touch-friendly score inputs (phone-first)
 
+## Quiniela CSV template
+
+Use these files to see the expected sheet structure (or start a blank import):
+
+| File | Description |
+|------|-------------|
+| [**docs/quiniela_template.csv**](docs/quiniela_template.csv) | Full header + **3 example players** (`alice@example.com`, `bob@example.com`, `carol@example.com`) |
+| [**docs/quiniela_template_blank.csv**](docs/quiniela_template_blank.csv) | Same header + one empty row to fill |
+| [**docs/QUINIELA_CSV.md**](docs/QUINIELA_CSV.md) | Column rules, score format, import behavior |
+
+**Quick rules:** column 2 = email; match columns named `Partido N: Home-Away`; scores like `2-1` or `0-0`; empty cells are skipped.
+
 ## Project layout
 
 ```
@@ -46,7 +58,10 @@ wc-fantasy/
 │   ├── lib/
 │   └── Dockerfile
 ├── data/              # optional local sqlite only; NOT required for compose/boot
-├── docs/              # DEPLOY.md, Vercel/Railway notes
+├── docs/              # DEPLOY.md, Vercel/Railway notes, quiniela CSV templates
+│   ├── quiniela_template.csv       # examples
+│   ├── quiniela_template_blank.csv # fill-in blank
+│   └── QUINIELA_CSV.md             # format guide
 ├── docker-compose.yml # backend + frontend; sqlite volume only (no quiniela mount)
 ├── package.json       # npm workspaces (Vercel / monorepo root)
 └── README.md
@@ -373,6 +388,7 @@ Without Google credentials, the app falls back to **dev email login** (fine for 
 2. Open **Admin** tab.
 3. **Resultados**
    - **Quiniela CSV**: drag-and-drop (or click) an export of the group sheet → **Importar CSV subido**. Optional checkbox to also run official results sync + recalc after import.
+   - Start from the [CSV template](docs/quiniela_template.csv) if you need the column layout ([format guide](docs/QUINIELA_CSV.md)).
    - Each upload is saved as a **new** file (`{original_stem}_{uuid}.csv`) under a writable dir (`QUINIELA_DATA_DIR` if set, else `/app/data`, else `/tmp` on read-only hosts like Railway image layers). Uploads are **not** reused — upload again whenever the sheet changes.
    - Publish a single match score manually, or **Forzar sync** for FBref/Wikipedia/API.
 4. **Ver usuario**: select a player to inspect all their predictions (cannot edit theirs).
@@ -385,7 +401,7 @@ Content-Type: multipart/form-data
 file=<quiniela.csv>
 ```
 
-See also [`docs/DEPLOY.md`](docs/DEPLOY.md) §5.
+See also [`docs/DEPLOY.md`](docs/DEPLOY.md) §5 and [`docs/QUINIELA_CSV.md`](docs/QUINIELA_CSV.md).
 
 ## Scoring rules
 

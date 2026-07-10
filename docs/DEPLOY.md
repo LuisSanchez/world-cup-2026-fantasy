@@ -122,9 +122,11 @@ npm run dev
 
 Containers start **without** any `quiniela.csv` mount or image copy. Schedule/matches seed from code; users/predictions come from admin uploads (or Google login + in-app picks).
 
+**Templates:** [quiniela_template.csv](quiniela_template.csv) (examples) · [quiniela_template_blank.csv](quiniela_template_blank.csv) · [format guide](QUINIELA_CSV.md).
+
 When people update scores in the Google Sheet outside the app:
 
-1. Export the sheet as CSV (columns: email + `Partido N: …` cells like `2-1`).
+1. Export the sheet as CSV (columns: email + `Partido N: …` cells like `2-1`), or start from the template above.
 2. As **admin**: **Admin → Resultados** → drag onto **Quiniela CSV** → **Importar CSV subido**.
    - Optionally check **también sincronizar resultados oficiales** before import.
 3. API (multipart, admin JWT, **file required**):  
