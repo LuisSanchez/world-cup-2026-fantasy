@@ -2,6 +2,8 @@
 
 Web app for tracking World Cup 2026 predictions among a private group. Users sign in with Google, enter scores for each match, compete on a live leaderboard, and only edit their own future predictions (locked **10 minutes** before kickoff).
 
+![Dashboard](data/img/wf-fantasy-1.png)
+
 ## Stack
 
 | Layer | Tech |
