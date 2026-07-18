@@ -182,7 +182,20 @@ export const api = {
       match_duration_minutes: number;
       results_fetch_window_minutes: number;
       results_poll_seconds: number;
+      cron_jobs_enabled: boolean;
+      cron_jobs_env_default: boolean;
+      runtime_override: boolean | null;
+      background_worker_running: boolean;
     }>("/api/admin/sync-status"),
+  /** Toggle background + on-request auto jobs (default off until enabled). */
+  adminSetCronJobs: (enabled: boolean) =>
+    request<{
+      cron_jobs_enabled: boolean;
+      cron_jobs_env_default: boolean;
+      runtime_override: boolean | null;
+      background_worker_running: boolean;
+      results_poll_seconds: number;
+    }>(`/api/admin/cron-jobs?enabled=${enabled}`, { method: "POST" }),
   /**
    * Upload quiniela CSV (admin). Always sends a new file; server stores quiniela_<uuid>.csv.
    */

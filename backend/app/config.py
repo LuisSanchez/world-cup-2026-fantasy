@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     results_fetch_window_minutes: int = 5
     # Background worker poll interval
     results_poll_seconds: int = 60
+    # Master switch for background worker + on-request auto sync/auto-finish.
+    # Default OFF to avoid burning DB / external API credits. Admin can toggle at runtime;
+    # env CRON_JOBS_ENABLED sets the value at process start.
+    cron_jobs_enabled: bool = False
     # Throttle for sync triggered by normal API reads
     results_request_throttle_seconds: int = 45
     # Cache fixture list from external API

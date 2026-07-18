@@ -42,6 +42,46 @@ _cache_fetched_at: datetime | None = None
 _bg_task: asyncio.Task | None = None
 _stop_event: asyncio.Event | None = None
 
+# Runtime override for cron jobs. None = use Settings.cron_jobs_enabled (default False).
+_runtime_cron_enabled: bool | None = None
+
+
+def is_cron_jobs_enabled() -> bool:
+    """Whether background + on-request maintenance jobs may run."""
+    if _runtime_cron_enabled is not None:
+        return _runtime_cron_enabled
+    return bool(get_settings().cron_jobs_enabled)
+
+
+def background_worker_running() -> bool:
+    return _bg_task is not None and not _bg_task.done()
+
+
+def get_cron_jobs_status() -> dict[str, Any]:
+    settings = get_settings()
+    return {
+        "cron_jobs_enabled": is_cron_jobs_enabled(),
+        "cron_jobs_env_default": bool(settings.cron_jobs_enabled),
+        "runtime_override": _runtime_cron_enabled,
+        "background_worker_running": background_worker_running(),
+        "results_poll_seconds": settings.results_poll_seconds,
+        "results_request_throttle_seconds": settings.results_request_throttle_seconds,
+    }
+
+
+async def set_cron_jobs_enabled(enabled: bool) -> dict[str, Any]:
+    """Enable/disable all automatic jobs; start or stop the background worker."""
+    global _runtime_cron_enabled
+    enabled = bool(enabled)
+    _runtime_cron_enabled = enabled
+    if enabled:
+        start_background_sync()
+        logger.info("Cron jobs ENABLED (background worker + on-request sync)")
+    else:
+        await stop_background_sync()
+        logger.info("Cron jobs DISABLED (background worker + on-request sync stopped)")
+    return get_cron_jobs_status()
+
 
 def _expected_end(match: Match, duration_min: int) -> datetime | None:
     if not match.kickoff:
@@ -473,7 +513,12 @@ async def sync_finished_scores(
 
 
 async def maybe_sync_on_request(db: Session | None = None) -> dict[str, Any] | None:
-    """Throttled sync for use from read endpoints (leaderboard / matches)."""
+    """Throttled sync for use from read endpoints (leaderboard / matches).
+
+    No-op when cron jobs are disabled (default). Admin force-sync still works.
+    """
+    if not is_cron_jobs_enabled():
+        return None
     global _last_request_sync
     settings = get_settings()
     now = datetime.utcnow()
@@ -489,6 +534,13 @@ async def _background_loop():
     interval = max(30, settings.results_poll_seconds)
     logger.info("Results sync background worker started (interval=%ss)", interval)
     while _stop_event and not _stop_event.is_set():
+        if not is_cron_jobs_enabled():
+            logger.info("Background worker idle — cron jobs disabled")
+            try:
+                await asyncio.wait_for(_stop_event.wait(), timeout=interval)
+            except asyncio.TimeoutError:
+                pass
+            continue
         try:
             r = await sync_finished_scores()
             if r.get("updated"):
@@ -503,7 +555,14 @@ async def _background_loop():
 
 
 def start_background_sync() -> None:
+    """Start the poll loop only when cron jobs are enabled."""
     global _bg_task, _stop_event
+    if not is_cron_jobs_enabled():
+        logger.info(
+            "Background results sync not started (cron jobs disabled; set CRON_JOBS_ENABLED=true "
+            "or enable via Admin → Cron jobs)"
+        )
+        return
     if _bg_task and not _bg_task.done():
         return
     _stop_event = asyncio.Event()
@@ -520,3 +579,4 @@ async def stop_background_sync() -> None:
         except (asyncio.TimeoutError, asyncio.CancelledError):
             _bg_task.cancel()
         _bg_task = None
+    _stop_event = None

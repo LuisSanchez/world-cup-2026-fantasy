@@ -296,7 +296,30 @@ class TestLeaderboardDashboardAdmin:
         app.dependency_overrides[get_current_user] = lambda: _user(admin=True)
         r = c.get("/api/admin/sync-status")
         assert r.status_code == 200
-        assert "football_api_configured" in r.json()
+        body = r.json()
+        assert "football_api_configured" in body
+        assert "cron_jobs_enabled" in body
+
+    def test_admin_cron_jobs_toggle(self, client_and_db):
+        c, _, app = client_and_db
+        from app.auth import get_current_user
+
+        app.dependency_overrides[get_current_user] = lambda: _user(admin=True)
+        with patch(
+            "app.results_sync.set_cron_jobs_enabled",
+            new_callable=AsyncMock,
+            return_value={
+                "cron_jobs_enabled": True,
+                "background_worker_running": True,
+                "cron_jobs_env_default": False,
+                "runtime_override": True,
+                "results_poll_seconds": 60,
+                "results_request_throttle_seconds": 45,
+            },
+        ):
+            r = c.post("/api/admin/cron-jobs?enabled=true")
+        assert r.status_code == 200
+        assert r.json()["cron_jobs_enabled"] is True
 
     def test_admin_user_predictions(self, client_and_db):
         c, db, app = client_and_db

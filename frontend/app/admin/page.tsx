@@ -25,12 +25,19 @@ export default function AdminPage() {
   const [lb, setLb] = useState<LeaderboardEntry[]>([]);
   const [syncMsg, setSyncMsg] = useState("");
   const [syncBusy, setSyncBusy] = useState(false);
-  const [syncCfg, setSyncCfg] = useState<{ football_api_configured?: boolean } | null>(null);
+  const [syncCfg, setSyncCfg] = useState<{
+    football_api_configured?: boolean;
+    cron_jobs_enabled?: boolean;
+    background_worker_running?: boolean;
+    cron_jobs_env_default?: boolean;
+    results_poll_seconds?: number;
+  } | null>(null);
+  const [cronBusy, setCronBusy] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
   const [exportMsg, setExportMsg] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [pendingCsv, setPendingCsv] = useState<File | null>(null);
-  const [alsoSyncAfterUpload, setAlsoSyncAfterUpload] = useState(true);
+  const [alsoSyncAfterUpload, setAlsoSyncAfterUpload] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadMatches = useCallback(async () => {
@@ -68,6 +75,30 @@ export default function AdminPage() {
       setSyncMsg(e instanceof Error ? e.message : "Error en sync");
     } finally {
       setSyncBusy(false);
+    }
+  };
+
+  const toggleCronJobs = async (enabled: boolean) => {
+    setCronBusy(true);
+    setSyncMsg("");
+    try {
+      const r = await api.adminSetCronJobs(enabled);
+      setSyncCfg((prev) => ({
+        ...prev,
+        cron_jobs_enabled: r.cron_jobs_enabled,
+        background_worker_running: r.background_worker_running,
+        cron_jobs_env_default: r.cron_jobs_env_default,
+        results_poll_seconds: r.results_poll_seconds,
+      }));
+      setSyncMsg(
+        r.cron_jobs_enabled
+          ? `Cron jobs ACTIVADOS (worker ${r.background_worker_running ? "en marcha" : "iniciando"}; poll ${r.results_poll_seconds}s).`
+          : "Cron jobs DESACTIVADOS — no hay sync automático ni worker en background (ahorra créditos DB/API)."
+      );
+    } catch (e) {
+      setSyncMsg(e instanceof Error ? e.message : "Error al cambiar cron jobs");
+    } finally {
+      setCronBusy(false);
     }
   };
 
@@ -167,11 +198,62 @@ export default function AdminPage() {
         <>
           <div className="rules-box">
             <p>
-              Tras cada partido, el sistema busca resultados en <strong>FBref</strong> (World Cup
-              Stats / Scores &amp; Fixtures), luego <strong>Wikipedia</strong> si FBref está bloqueado,
-              y opcionalmente API-Football. El ranking se recalcula solo. También puedes publicar a
-              mano abajo.
+              Tras cada partido, el sistema puede buscar resultados en <strong>FBref</strong>,{" "}
+              <strong>Wikipedia</strong> y opcionalmente API-Football. Por defecto los{" "}
+              <strong>cron jobs están apagados</strong> para no gastar créditos de base de datos ni
+              rate-limits. Actívalos solo cuando necesites sync automático; si no, usa{" "}
+              <strong>Solo forzar sync</strong> o publica a mano.
             </p>
+            <div
+              style={{
+                marginTop: 12,
+                padding: "10px 12px",
+                borderRadius: 8,
+                border: "1px solid var(--border)",
+                background: "var(--surface-2, var(--bg))",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div>
+                  <strong>Cron jobs (sync automático)</strong>
+                  <p style={{ margin: "4px 0 0", fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                    Worker en background + scrape al cargar leaderboard/partidos.{" "}
+                    Estado:{" "}
+                    <strong
+                      style={{
+                        color: syncCfg?.cron_jobs_enabled ? "var(--accent)" : "var(--danger)",
+                      }}
+                    >
+                      {syncCfg?.cron_jobs_enabled ? "ON" : "OFF"}
+                    </strong>
+                    {syncCfg?.background_worker_running ? " · worker activo" : ""}
+                    {syncCfg?.cron_jobs_env_default
+                      ? " · env default ON"
+                      : " · env default OFF"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${syncCfg?.cron_jobs_enabled ? "btn-secondary" : "btn-primary"}`}
+                  disabled={cronBusy}
+                  onClick={() => toggleCronJobs(!syncCfg?.cron_jobs_enabled)}
+                >
+                  {cronBusy
+                    ? "…"
+                    : syncCfg?.cron_jobs_enabled
+                      ? "Apagar cron jobs"
+                      : "Encender cron jobs"}
+                </button>
+              </div>
+            </div>
             <p style={{ marginTop: 8, fontSize: "0.75rem" }}>
               API configurada:{" "}
               <strong style={{ color: syncCfg?.football_api_configured ? "var(--accent)" : "var(--danger)" }}>

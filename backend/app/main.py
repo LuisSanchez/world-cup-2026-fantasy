@@ -85,11 +85,15 @@ def run_startup_init() -> None:
         print(f"Kickoff schedule refresh: {ko}")
         db.commit()
         print(f"Admin emails: {sorted(admin_email_set())}")
-        auto_finish_elapsed_matches(db)
+        # auto_finish only when cron jobs are on (saves DB writes on cold starts)
+        from app.results_sync import is_cron_jobs_enabled
+
+        if is_cron_jobs_enabled():
+            auto_finish_elapsed_matches(db)
     finally:
         db.close()
-    # Note: background results_sync is skipped when VERCEL=1 (serverless can't run a loop).
-    # Use admin "Forzar sync" or rely on on-request maybe_sync_on_request instead.
+    # Note: background results_sync is skipped when VERCEL=1 or cron jobs are disabled (default).
+    # Use admin "Forzar sync" or toggle cron jobs in Admin when you need auto results.
 
 
 @asynccontextmanager
@@ -98,14 +102,24 @@ async def lifespan(app: FastAPI):
 
     run_startup_init()
 
-    from app.results_sync import start_background_sync, stop_background_sync
+    from app.results_sync import (
+        is_cron_jobs_enabled,
+        start_background_sync,
+        stop_background_sync,
+    )
 
-    # Vercel Python / Mangum: no long-lived background tasks
-    if os.environ.get("VERCEL") != "1":
+    # Vercel Python / Mangum: no long-lived background tasks.
+    # Cron jobs are OFF by default (CRON_JOBS_ENABLED) to avoid DB/API credit burn.
+    if os.environ.get("VERCEL") != "1" and is_cron_jobs_enabled():
         start_background_sync()
         yield
         await stop_background_sync()
     else:
+        if os.environ.get("VERCEL") != "1":
+            print(
+                "Cron jobs disabled — background results worker not started. "
+                "Enable via CRON_JOBS_ENABLED=true or Admin → Cron jobs."
+            )
         yield
 
 
@@ -240,11 +254,12 @@ async def list_matches(
     db: Annotated[Session, Depends(get_db)],
     stage: str | None = None,
 ):
-    auto_finish_elapsed_matches(db)
-    from app.results_sync import maybe_sync_on_request
+    from app.results_sync import is_cron_jobs_enabled, maybe_sync_on_request
 
-    await maybe_sync_on_request(db)
-    db.expire_all()
+    if is_cron_jobs_enabled():
+        auto_finish_elapsed_matches(db)
+        await maybe_sync_on_request(db)
+        db.expire_all()
     q = db.query(Match).order_by(Match.match_number)
     if stage:
         q = q.filter(Match.stage == stage)
@@ -266,11 +281,12 @@ async def my_predictions(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    auto_finish_elapsed_matches(db)
-    from app.results_sync import maybe_sync_on_request
+    from app.results_sync import is_cron_jobs_enabled, maybe_sync_on_request
 
-    await maybe_sync_on_request(db)
-    db.expire_all()
+    if is_cron_jobs_enabled():
+        auto_finish_elapsed_matches(db)
+        await maybe_sync_on_request(db)
+        db.expire_all()
     matches = db.query(Match).order_by(Match.match_number).all()
     preds = {
         p.match_id: p
@@ -341,22 +357,24 @@ async def dashboard(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Accuracy stats: exact scores, team goals, results, averages."""
-    auto_finish_elapsed_matches(db)
-    from app.results_sync import maybe_sync_on_request
+    from app.results_sync import is_cron_jobs_enabled, maybe_sync_on_request
     from app.stats import dashboard_payload
 
-    await maybe_sync_on_request(db)
-    db.expire_all()
+    if is_cron_jobs_enabled():
+        auto_finish_elapsed_matches(db)
+        await maybe_sync_on_request(db)
+        db.expire_all()
     return dashboard_payload(db)
 
 
 @app.get("/api/leaderboard", response_model=list[LeaderboardEntry])
 async def leaderboard(db: Annotated[Session, Depends(get_db)]):
-    auto_finish_elapsed_matches(db)
-    from app.results_sync import maybe_sync_on_request
+    from app.results_sync import is_cron_jobs_enabled, maybe_sync_on_request
 
-    await maybe_sync_on_request(db)
-    db.expire_all()
+    if is_cron_jobs_enabled():
+        auto_finish_elapsed_matches(db)
+        await maybe_sync_on_request(db)
+        db.expire_all()
     # Real admins compete; only spectator super-admin (admin@localhost.dev) is excluded
     users = db.query(User).order_by(User.total_points.desc(), User.name).all()
     entries = []
@@ -483,7 +501,10 @@ async def admin_sync_results(
     _: Annotated[User, Depends(require_admin)],
     force_all: bool = Query(True, description="Try all unfinished matches, not only past expected end"),
 ):
-    """Force-fetch finished scores from external API and update leaderboard."""
+    """Force-fetch finished scores from external API and update leaderboard.
+
+    Always allowed even when cron jobs are off (manual one-shot).
+    """
     from app.results_sync import sync_finished_scores
 
     return await sync_finished_scores(force_all=force_all)
@@ -491,9 +512,11 @@ async def admin_sync_results(
 
 @app.get("/api/admin/sync-status")
 def admin_sync_status(_: Annotated[User, Depends(require_admin)]):
-    """Whether auto-sync is configured."""
+    """Whether auto-sync is configured + cron job master switch state."""
+    from app.results_sync import get_cron_jobs_status
     from app.web_results import web_results_status
 
+    cron = get_cron_jobs_status()
     return {
         "football_api_configured": bool(settings.football_api_key),
         "league_id": settings.football_league_id,
@@ -502,7 +525,23 @@ def admin_sync_status(_: Annotated[User, Depends(require_admin)]):
         "results_fetch_window_minutes": settings.results_fetch_window_minutes,
         "results_poll_seconds": settings.results_poll_seconds,
         "web_scrape": web_results_status(),
+        **cron,
     }
+
+
+@app.post("/api/admin/cron-jobs")
+async def admin_set_cron_jobs(
+    _: Annotated[User, Depends(require_admin)],
+    enabled: bool = Query(..., description="true = start background + on-request jobs; false = stop all"),
+):
+    """Toggle all automatic jobs (background poll, on-request scrape, auto-finish).
+
+    Default at process start is OFF (CRON_JOBS_ENABLED=false) to protect DB/API credits.
+    Manual "Forzar sync" still works when disabled.
+    """
+    from app.results_sync import set_cron_jobs_enabled
+
+    return await set_cron_jobs_enabled(enabled)
 
 
 @app.post("/api/admin/seed")

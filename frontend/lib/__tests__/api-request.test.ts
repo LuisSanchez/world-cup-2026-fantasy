@@ -86,8 +86,9 @@ describe("api request layer", () => {
     await api.adminUpdateMatch(1, { home_team: "X" });
     await api.adminSyncResults();
     await api.adminSyncStatus();
+    await api.adminSetCronJobs(false);
     await api.dashboard();
-    expect((global.fetch as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(8);
+    expect((global.fetch as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(9);
   });
 
   it("clearToken removes auth", () => {

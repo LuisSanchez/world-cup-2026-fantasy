@@ -32,6 +32,7 @@ Database →  Neon / Railway Postgres  (DATABASE_URL on Railway only)
 | `ADMIN_EMAILS` | Comma-separated real admins |
 | `FOOTBALL_API_KEY` | Optional, for results API |
 | `PREDICTION_LOCK_MINUTES` | `10` (default) |
+| `CRON_JOBS_ENABLED` | `false` (default) — background + on-request auto sync. Leave off to save DB/API credits; toggle in Admin or set `true` to enable at boot |
 
 Railway sets `PORT` automatically; the Dockerfile/Procfile use it.
 

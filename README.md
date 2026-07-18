@@ -471,7 +471,8 @@ Vercel should host **only** the Next.js app. FastAPI must run elsewhere — not 
 | POST | `/api/admin/matches/{id}/score` | Admin: set real score |
 | POST | `/api/admin/import-quiniela` | Admin: multipart `file` CSV → new `*_uuid.csv` + import predictions |
 | POST | `/api/admin/sync-results` | Admin: force fetch finished scores |
-| GET | `/api/admin/sync-status` | Admin: auto-sync configuration |
+| GET | `/api/admin/sync-status` | Admin: auto-sync config + cron jobs state |
+| POST | `/api/admin/cron-jobs?enabled=true\|false` | Admin: toggle all automatic jobs (default off) |
 | POST | `/api/admin/recalculate` | Admin: recalc all points |
 | POST | `/api/admin/refresh-kickoffs` | Admin: refresh kickoffs from schedule constants |
 
@@ -487,10 +488,11 @@ After a match’s expected end (`kickoff` + `MATCH_DURATION_MINUTES`, default ~1
 
 | Mechanism | Detail |
 |-----------|--------|
-| Background worker | Polls every `RESULTS_POLL_SECONDS` (default 60s) |
-| On read | Leaderboard / matches / my predictions / dashboard trigger a throttled sync (~45s) |
+| **Master switch** | `CRON_JOBS_ENABLED` (default **`false`**) + Admin toggle. When off, no background poll and no on-request scrape (saves DB/API credits). |
+| Background worker | Polls every `RESULTS_POLL_SECONDS` (default 60s) **only if cron jobs ON** |
+| On read | Leaderboard / matches / my predictions / dashboard trigger a throttled sync (~45s) **only if cron jobs ON** |
 | Priority window | First `RESULTS_FETCH_WINDOW_MINUTES` (default 5) after expected end; retries continue if score still missing |
-| Fallback | Admin sets score manually or hits **Forzar sync** in Admin |
+| Manual | Admin **Forzar sync** and manual score entry always work even when cron is off |
 
 Optional: set `FOOTBALL_API_KEY` (from [api-football.com](https://www.api-football.com/)) in env / Docker.
 

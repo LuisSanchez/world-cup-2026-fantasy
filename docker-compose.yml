@@ -22,6 +22,7 @@ services:
       - FOOTBALL_SEASON=${FOOTBALL_SEASON:-2026}
       - RESULTS_FETCH_WINDOW_MINUTES=${RESULTS_FETCH_WINDOW_MINUTES:-5}
       - RESULTS_POLL_SECONDS=${RESULTS_POLL_SECONDS:-60}
+      - CRON_JOBS_ENABLED=${CRON_JOBS_ENABLED:-false}
     volumes:
       # Persistent SQLite / uploads dir — survives container restarts; do not delete in prod
       # No quiniela.csv mount: app starts without CSV; admin uploads create quiniela_<uuid>.csv on demand

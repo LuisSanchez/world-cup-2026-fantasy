@@ -118,15 +118,75 @@ class TestMaybeSyncThrottle:
         import app.results_sync as rs
 
         rs._last_request_sync = None
-        with patch("app.results_sync.get_settings") as gs, patch(
-            "app.results_sync.sync_finished_scores", new_callable=AsyncMock, return_value={"ok": 1}
-        ) as sync:
-            gs.return_value = SimpleNamespace(results_request_throttle_seconds=9999)
-            r1 = await maybe_sync_on_request()
-            r2 = await maybe_sync_on_request()
-        assert r1 == {"ok": 1}
-        assert r2 is None
-        assert sync.await_count == 1
+        rs._runtime_cron_enabled = True
+        try:
+            with patch("app.results_sync.get_settings") as gs, patch(
+                "app.results_sync.sync_finished_scores", new_callable=AsyncMock, return_value={"ok": 1}
+            ) as sync:
+                gs.return_value = SimpleNamespace(
+                    results_request_throttle_seconds=9999,
+                    cron_jobs_enabled=True,
+                )
+                r1 = await maybe_sync_on_request()
+                r2 = await maybe_sync_on_request()
+            assert r1 == {"ok": 1}
+            assert r2 is None
+            assert sync.await_count == 1
+        finally:
+            rs._runtime_cron_enabled = None
+
+    @pytest.mark.asyncio
+    async def test_maybe_sync_noop_when_cron_disabled(self):
+        import app.results_sync as rs
+
+        rs._runtime_cron_enabled = False
+        try:
+            with patch(
+                "app.results_sync.sync_finished_scores", new_callable=AsyncMock, return_value={"ok": 1}
+            ) as sync:
+                r = await maybe_sync_on_request()
+            assert r is None
+            sync.assert_not_awaited()
+        finally:
+            rs._runtime_cron_enabled = None
+
+
+class TestCronJobsToggle:
+    def test_default_disabled_uses_settings(self):
+        import app.results_sync as rs
+
+        rs._runtime_cron_enabled = None
+        with patch("app.results_sync.get_settings") as gs:
+            gs.return_value = SimpleNamespace(
+                cron_jobs_enabled=False,
+                results_poll_seconds=60,
+                results_request_throttle_seconds=45,
+            )
+            assert rs.is_cron_jobs_enabled() is False
+            st = rs.get_cron_jobs_status()
+            assert st["cron_jobs_enabled"] is False
+            assert st["cron_jobs_env_default"] is False
+
+    @pytest.mark.asyncio
+    async def test_set_cron_starts_and_stops_worker(self):
+        import app.results_sync as rs
+        from app.results_sync import set_cron_jobs_enabled
+
+        rs._bg_task = None
+        rs._stop_event = None
+        rs._runtime_cron_enabled = None
+        try:
+            with patch("app.results_sync.sync_finished_scores", new_callable=AsyncMock, return_value={}):
+                on = await set_cron_jobs_enabled(True)
+                assert on["cron_jobs_enabled"] is True
+                assert rs._bg_task is not None
+                off = await set_cron_jobs_enabled(False)
+                assert off["cron_jobs_enabled"] is False
+                assert rs._bg_task is None
+        finally:
+            rs._runtime_cron_enabled = None
+            rs._bg_task = None
+            rs._stop_event = None
 
 
 class TestBackgroundLifecycle:
@@ -136,11 +196,26 @@ class TestBackgroundLifecycle:
 
         rs._bg_task = None
         rs._stop_event = None
-        with patch("app.results_sync.sync_finished_scores", new_callable=AsyncMock, return_value={}):
+        rs._runtime_cron_enabled = True
+        try:
+            with patch("app.results_sync.sync_finished_scores", new_callable=AsyncMock, return_value={}):
+                start_background_sync()
+                assert rs._bg_task is not None
+                await stop_background_sync()
+            assert rs._bg_task is None
+        finally:
+            rs._runtime_cron_enabled = None
+
+    def test_start_skipped_when_cron_off(self):
+        import app.results_sync as rs
+
+        rs._bg_task = None
+        rs._runtime_cron_enabled = False
+        try:
             start_background_sync()
-            assert rs._bg_task is not None
-            await stop_background_sync()
-        assert rs._bg_task is None
+            assert rs._bg_task is None
+        finally:
+            rs._runtime_cron_enabled = None
 
 
 @pytest.mark.asyncio
